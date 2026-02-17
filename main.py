@@ -11,7 +11,6 @@ load_dotenv()
 
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
 if not OPENAI_API_KEY:
-    # Render will show this in logs if you forgot env var
     raise RuntimeError("Missing OPENAI_API_KEY environment variable.")
 
 MODEL_STRATEGY = os.getenv("MODEL_STRATEGY", "gpt-5-mini")
@@ -134,5 +133,56 @@ def openai_json_only(model: str, system: str, user: str) -> Dict[str, Any]:
         model=model,
         input=[
             {"role": "system", "content": system},
-            {"role": "use
+            {"role": "user", "content": user},
+        ],
+        text={"format": {"type": "json_object"}},
+    )
+    return json.loads(resp.output_text)
 
+
+def openai_text(model: str, system: str, user: str) -> str:
+    resp = client.responses.create(
+        model=model,
+        input=[
+            {"role": "system", "content": system},
+            {"role": "user", "content": user},
+        ],
+    )
+    return (resp.output_text or "").strip()
+
+
+@app.get("/health")
+def health():
+    return {"ok": True, "service": "hermann-engine"}
+
+
+@app.post("/analyze", response_model=AnalyzeResponse)
+def analyze(req: AnalyzeRequest):
+    # 1) Strategy Engine -> JSON dict
+    raw = openai_json_only(
+        model=MODEL_STRATEGY,
+        system=SYSTEM_STRATEGY,
+        user=req.raw_input,
+    )
+
+    # 2) Validate against schema (pydantic v1)
+    try:
+        strategy = HermannStrategyJSON.parse_obj(raw)
+    except Exception as e:
+        raise HTTPException(
+            status_code=422,
+            detail={
+                "error": "Strategy JSON failed schema validation",
+                "validation": str(e),
+                "raw": raw,
+            },
+        )
+
+    # 3) Composer -> final output (pydantic v1 uses .dict())
+    output = openai_text(
+        model=MODEL_COMPOSER,
+        system=SYSTEM_COMPOSER,
+        user=json.dumps(strategy.dict(), ensure_ascii=False, indent=2),
+    )
+
+    return {"json": strategy, "output": output}
