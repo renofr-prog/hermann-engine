@@ -96,7 +96,7 @@ class AnalyzeRequest(BaseModel):
 
 
 class AnalyzeResponse(BaseModel):
-    json: HermannStrategyJSON
+    strategy: HermannStrategyJSON
     output: str
 
 
@@ -112,6 +112,35 @@ Classify budget blockage.
 Always provide CALL plan AND email angles.
 Decide primary channel based on negotiation rules.
 No commentary outside JSON.
+
+Return ONLY valid JSON matching this schema:
+{
+  "analysis": {
+    "recontextualisation": "",
+    "momentum": "LOW|MED|HIGH",
+    "risk": "LOW|MED|HIGH",
+    "control": "LOW|MED|HIGH",
+    "budget_type": "FINANCIAL|POLITICAL|STALL|UNKNOWN",
+    "posture": "ENGAGED|NEUTRAL|RESISTANT|AVOIDING",
+    "key_signals": [{"quote": "...", "meaning": "..."}]
+  },
+  "decision": {
+    "primary_move": "PUSH|CLARIFY|PAUSE|DISENGAGE",
+    "recommended_channel": "CALL|EMAIL|BOTH",
+    "reasoning_summary": "",
+    "what_success_looks_like": ""
+  },
+  "execution": {
+    "call_plan": {
+      "opening": "",
+      "objectives": [],
+      "questions": [],
+      "pushbacks": []
+    },
+    "email_short": {"angle": "", "cta": ""},
+    "email_standard": {"angle": "", "cta": ""}
+  }
+}
 """
 
 SYSTEM_COMPOSER = """You are HERMANN in senior delivery mode.
@@ -136,26 +165,37 @@ No JSON in final output
 
 
 def openai_json_only(model: str, system: str, user: str) -> Dict[str, Any]:
-    resp = client.responses.create(
+    # Use Chat Completions API and force JSON output
+    resp = client.chat.completions.create(
         model=model,
-        input=[
+        messages=[
             {"role": "system", "content": system},
             {"role": "user", "content": user},
         ],
-        text={"format": {"type": "json_object"}},
+        response_format={"type": "json_object"},
+        temperature=0.2,
     )
-    return json.loads(resp.output_text)
+
+    content = (resp.choices[0].message.content or "").strip()
+    if not content:
+        raise RuntimeError("OpenAI returned empty content for JSON response.")
+
+    try:
+        return json.loads(content)
+    except json.JSONDecodeError as e:
+        raise RuntimeError(f"OpenAI returned non-JSON content: {e}. Content was: {content[:500]}")
 
 
 def openai_text(model: str, system: str, user: str) -> str:
-    resp = client.responses.create(
+    resp = client.chat.completions.create(
         model=model,
-        input=[
+        messages=[
             {"role": "system", "content": system},
             {"role": "user", "content": user},
         ],
+        temperature=0.3,
     )
-    return (resp.output_text or "").strip()
+    return (resp.choices[0].message.content or "").strip()
 
 
 @app.get("/health")
@@ -171,7 +211,7 @@ def analyze(req: AnalyzeRequest):
         user=req.raw_input,
     )
 
-    # Pydantic v2 compatible validation
+    # Pydantic v2 validation
     try:
         strategy = HermannStrategyJSON.model_validate(raw)
     except Exception as e:
@@ -190,4 +230,4 @@ def analyze(req: AnalyzeRequest):
         user=json.dumps(strategy.model_dump(), ensure_ascii=False, indent=2),
     )
 
-    return {"json": strategy, "output": output}
+    return {"strategy": strategy, "output": output}
