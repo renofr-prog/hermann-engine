@@ -1,15 +1,3 @@
-load_dotenv()
-
-OPENAI_API_KEY = (
-    os.getenv("OPENAI_API_KEY")
-    or os.getenv("OPENAI_API_KEY")
-    or os.getenv("OPENAI_KEY")
-    or ""
-).strip()
-
-if not OPENAI_API_KEY:
-    raise RuntimeError("Missing OPENAI_API_KEY environment variable.")
-
 import os
 import json
 from typing import Any, Dict, List, Literal
@@ -19,11 +7,21 @@ from pydantic import BaseModel, Field
 from dotenv import load_dotenv
 from openai import OpenAI
 
+# Load local .env if present (does NOT override Render env vars by default)
 load_dotenv()
 
-OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
+# Accept a few possible key names (Render should be OPENAI_API_KEY)
+OPENAI_API_KEY = (
+    (os.getenv("OPENAI_API_KEY") or "")
+    or (os.getenv("OPENAI_KEY") or "")
+    or (os.getenv("OPENAI_API_TOKEN") or "")
+).strip()
+
 if not OPENAI_API_KEY:
-    raise RuntimeError("Missing OPENAI_API_KEY environment variable.")
+    raise RuntimeError(
+        "Missing OPENAI_API_KEY environment variable. "
+        "Set it in Render > Service > Environment."
+    )
 
 MODEL_STRATEGY = os.getenv("MODEL_STRATEGY", "gpt-5-mini")
 MODEL_COMPOSER = os.getenv("MODEL_COMPOSER", "gpt-5-mini")
@@ -138,9 +136,6 @@ No JSON in final output
 
 
 def openai_json_only(model: str, system: str, user: str) -> Dict[str, Any]:
-    """
-    Forces a JSON object response via Responses API.
-    """
     resp = client.responses.create(
         model=model,
         input=[
@@ -170,16 +165,15 @@ def health():
 
 @app.post("/analyze", response_model=AnalyzeResponse)
 def analyze(req: AnalyzeRequest):
-    # 1) Strategy Engine -> JSON dict
     raw = openai_json_only(
         model=MODEL_STRATEGY,
         system=SYSTEM_STRATEGY,
         user=req.raw_input,
     )
 
-    # 2) Validate against schema (pydantic v1)
+    # Pydantic v2 compatible validation
     try:
-        strategy = HermannStrategyJSON.parse_obj(raw)
+        strategy = HermannStrategyJSON.model_validate(raw)
     except Exception as e:
         raise HTTPException(
             status_code=422,
@@ -190,11 +184,10 @@ def analyze(req: AnalyzeRequest):
             },
         )
 
-    # 3) Composer -> final output (pydantic v1 uses .dict())
     output = openai_text(
         model=MODEL_COMPOSER,
         system=SYSTEM_COMPOSER,
-        user=json.dumps(strategy.dict(), ensure_ascii=False, indent=2),
+        user=json.dumps(strategy.model_dump(), ensure_ascii=False, indent=2),
     )
 
     return {"json": strategy, "output": output}
