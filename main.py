@@ -1,3 +1,15 @@
+load_dotenv()
+
+OPENAI_API_KEY = (
+    os.getenv("OPENAI_API_KEY")
+    or os.getenv("OPENAI_API_KEY")
+    or os.getenv("OPENAI_KEY")
+    or ""
+).strip()
+
+if not OPENAI_API_KEY:
+    raise RuntimeError("Missing OPENAI_API_KEY environment variable.")
+
 import os
 import json
 from typing import Any, Dict, List, Literal
