@@ -31,7 +31,7 @@ app = FastAPI(title="HERMANN v1", version="1.0.0")
 
 
 # -------------------------
-# Definitive JSON schema
+# Definitive JSON schema (V1 + V2 extensions, backward compatible)
 # -------------------------
 Momentum = Literal["LOW", "MED", "HIGH"]
 Risk = Literal["LOW", "MED", "HIGH"]
@@ -41,6 +41,11 @@ Posture = Literal["ENGAGED", "NEUTRAL", "RESISTANT", "AVOIDING"]
 PrimaryMove = Literal["PUSH", "CLARIFY", "PAUSE", "DISENGAGE"]
 RecommendedChannel = Literal["CALL", "EMAIL", "BOTH"]
 
+DealMaturity = Literal[1, 2, 3, 4, 5]
+SponsorStrength = Literal["WEAK", "MED", "STRONG"]
+PowerBalance = Literal["SELLER_UP", "EVEN", "BUYER_UP"]
+UrgencyDecay = Literal["LOW", "MED", "HIGH"]
+
 
 class KeySignal(BaseModel):
     quote: str
@@ -48,6 +53,7 @@ class KeySignal(BaseModel):
 
 
 class Analysis(BaseModel):
+    # V1 (keep)
     recontextualisation: str = ""
     momentum: Momentum
     risk: Risk
@@ -56,12 +62,27 @@ class Analysis(BaseModel):
     posture: Posture
     key_signals: List[KeySignal] = Field(default_factory=list)
 
+    # V2 extensions (add defaults => no breaking)
+    deal_maturity: DealMaturity = 3
+    sponsor_strength: SponsorStrength = "MED"
+    power_balance: PowerBalance = "EVEN"
+    urgency_decay: UrgencyDecay = "MED"
+    hidden_risks: List[str] = Field(default_factory=list)
+    political_risk: str = ""
+    info_gaps: List[str] = Field(default_factory=list)
+
 
 class Decision(BaseModel):
+    # V1 (keep)
     primary_move: PrimaryMove
     recommended_channel: RecommendedChannel
     reasoning_summary: str = ""
     what_success_looks_like: str = ""
+
+    # V2 extensions
+    scenario_a: str = ""
+    scenario_b: str = ""
+    failure_path: str = ""
 
 
 class CallPlan(BaseModel):
@@ -72,14 +93,28 @@ class CallPlan(BaseModel):
 
 
 class EmailPlan(BaseModel):
+    # V1 shape (front expects it)
     angle: str = ""
+    cta: str = ""
+
+
+class EmailDraft(BaseModel):
+    # V2 copy/paste ready
+    subject: str = ""
+    body: str = ""
     cta: str = ""
 
 
 class Execution(BaseModel):
     call_plan: CallPlan
+
+    # V1 (keep)
     email_short: EmailPlan
     email_standard: EmailPlan
+
+    # V2 (add)
+    email_option_a: EmailDraft = Field(default_factory=EmailDraft)
+    email_option_b: EmailDraft = Field(default_factory=EmailDraft)
 
 
 class HermannStrategyJSON(BaseModel):
@@ -100,18 +135,19 @@ class AnalyzeResponse(BaseModel):
     output: str
 
 
-SYSTEM_STRATEGY = """You are HERMANN, a senior commercial negotiation engine.
+SYSTEM_STRATEGY = """
+You are HERMANN, a partner-level commercial decision engine.
 
-You analyze sales or negotiation situations and produce a structured JSON only.
+You analyze sales or negotiation situations and produce structured JSON ONLY.
 
-Rules:
-Be cold, factual, structured.
-Never invent facts.
-Extract 2–3 key quotes if available.
-Classify budget blockage.
-Always provide CALL plan AND email angles.
-Decide primary channel based on negotiation rules.
-No commentary outside JSON.
+Non-negotiable rules:
+- Cold, factual, structured.
+- Never invent facts.
+- If context is missing, list "info_gaps" as the questions we MUST ask.
+- Extract 1–3 key quotes if available.
+- Always provide a CALL plan.
+- Always provide two alternative emails (Option A / Option B) as fallback paths.
+- Keep V1 fields populated too ("email_short", "email_standard") for compatibility.
 
 Return ONLY valid JSON matching this schema:
 {
@@ -122,13 +158,25 @@ Return ONLY valid JSON matching this schema:
     "control": "LOW|MED|HIGH",
     "budget_type": "FINANCIAL|POLITICAL|STALL|UNKNOWN",
     "posture": "ENGAGED|NEUTRAL|RESISTANT|AVOIDING",
-    "key_signals": [{"quote": "...", "meaning": "..."}]
+    "key_signals": [{"quote": "...", "meaning": "..."}],
+
+    "deal_maturity": 1|2|3|4|5,
+    "sponsor_strength": "WEAK|MED|STRONG",
+    "power_balance": "SELLER_UP|EVEN|BUYER_UP",
+    "urgency_decay": "LOW|MED|HIGH",
+    "hidden_risks": ["..."],
+    "political_risk": "",
+    "info_gaps": ["..."]
   },
   "decision": {
     "primary_move": "PUSH|CLARIFY|PAUSE|DISENGAGE",
     "recommended_channel": "CALL|EMAIL|BOTH",
     "reasoning_summary": "",
-    "what_success_looks_like": ""
+    "what_success_looks_like": "",
+
+    "scenario_a": "",
+    "scenario_b": "",
+    "failure_path": ""
   },
   "execution": {
     "call_plan": {
@@ -137,35 +185,49 @@ Return ONLY valid JSON matching this schema:
       "questions": [],
       "pushbacks": []
     },
+
     "email_short": {"angle": "", "cta": ""},
-    "email_standard": {"angle": "", "cta": ""}
+    "email_standard": {"angle": "", "cta": ""},
+
+    "email_option_a": {"subject": "", "body": "", "cta": ""},
+    "email_option_b": {"subject": "", "body": "", "cta": ""}
   }
 }
-"""
 
-SYSTEM_COMPOSER = """You are HERMANN in senior delivery mode.
+Guidance:
+- deal_maturity (1–5): 1=Discovery, 2=Fit confirmed, 3=Proposal, 4=Internal buy-in, 5=Closing.
+- sponsor_strength: WEAK if unclear/absent, STRONG if clearly driving internally.
+- power_balance: BUYER_UP if they have alternatives/time, SELLER_UP if you have leverage, else EVEN.
+- urgency_decay: HIGH if timing window is closing or delay kills probability.
+- scenario_a / scenario_b: two strategic paths (e.g. recover via call vs final email + exit line).
+- failure_path: what to do if call fails / they keep stalling.
+""".strip()
+
+
+SYSTEM_COMPOSER = """
+You are HERMANN in senior delivery mode.
 
 Transform the structured strategy into a clear, decisive, professional output.
 
-Structure:
-Recontextualisation (short)
-Momentum / Risk / Control (visible)
-Decision (2 lines)
-Plan
-Call script
-Email version A (80–120 words)
-Email version B (120–180 words)
+Structure (French):
+1) Décision (Move + Canal)
+2) Pourquoi (1–2 lignes)
+3) Impulsion (Momentum / Risk / Control)
+4) Diagnostic Partner (deal maturity, sponsor, power, urgency, hidden risks, info gaps)
+5) Plan d'appel (opening + objectives + questions + pushbacks)
+6) Emails alternatifs (Option A / Option B) copy/paste:
+   - Objet
+   - Corps
+   - CTA
 
 Rules:
-Tone: senior colleague
-Concise
-Always propose alternative channel
-No JSON in final output
-"""
+- Tone: senior colleague, direct, no fluff.
+- If info_gaps exist, list them as "Questions à verrouiller".
+- No JSON in final output.
+""".strip()
 
 
 def openai_json_only(model: str, system: str, user: str) -> Dict[str, Any]:
-    # Use Chat Completions API and force JSON output
     resp = client.chat.completions.create(
         model=model,
         messages=[
@@ -183,7 +245,9 @@ def openai_json_only(model: str, system: str, user: str) -> Dict[str, Any]:
     try:
         return json.loads(content)
     except json.JSONDecodeError as e:
-        raise RuntimeError(f"OpenAI returned non-JSON content: {e}. Content was: {content[:500]}")
+        raise RuntimeError(
+            f"OpenAI returned non-JSON content: {e}. Content was: {content[:500]}"
+        )
 
 
 def openai_text(model: str, system: str, user: str) -> str:
@@ -211,7 +275,6 @@ def analyze(req: AnalyzeRequest):
         user=req.raw_input,
     )
 
-    # Pydantic v2 validation
     try:
         strategy = HermannStrategyJSON.model_validate(raw)
     except Exception as e:
