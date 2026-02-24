@@ -130,9 +130,6 @@ class AnalyzeResponse(BaseModel):
 
 
 def build_system_strategy(lang: str) -> str:
-    # Strategy JSON should be language-agnostic-ish, but we still instruct:
-    # - emails must be in the requested language
-    # - output is structured JSON only
     return f"""
 You are HERMANN, a partner-level commercial decision engine.
 
@@ -203,7 +200,6 @@ Return ONE object with top-level keys: analysis, decision, execution. Never retu
 
 
 def build_system_composer(lang: str) -> str:
-    # We produce the readable output in the requested language
     if lang == "en":
         return """
 You are HERMANN in senior delivery mode.
@@ -238,8 +234,11 @@ Estructura:
 2) Por qué (1–2 líneas)
 3) Pulso (Momentum / Risk / Control)
 4) Diagnóstico Partner (madurez, sponsor, poder, urgencia, riesgos ocultos, info gaps)
-5) Plan de llamada
-6) Emails alternativos (Opción A / Opción B) listos para copiar/pegar
+5) Plan de llamada (apertura + objetivos + preguntas + respuestas a objeciones)
+6) Emails alternativos (Opción A / Opción B) listos para copiar/pegar:
+   - Asunto
+   - Cuerpo
+   - CTA
 
 Reglas:
 - Tono: colega senior, directo, sin relleno.
@@ -258,8 +257,11 @@ Struktur:
 2) Warum (1–2 Zeilen)
 3) Pulse (Momentum / Risk / Control)
 4) Partner-Diagnose (Deal-Reife, Sponsor, Power, Urgency, Hidden Risks, Info Gaps)
-5) Call-Plan
-6) Alternative Emails (Option A / Option B) copy/paste
+5) Call-Plan (Opening + Objectives + Questions + Pushbacks)
+6) Alternative Emails (Option A / Option B) copy/paste:
+   - Betreff
+   - Text
+   - CTA
 
 Regeln:
 - Ton: Senior-Kollege, direkt, kein Blabla.
@@ -269,25 +271,25 @@ Regeln:
 
     # fr default
     return """
-You are HERMANN in senior delivery mode.
+Tu es HERMANN en mode “delivery senior”.
 
-Transform the structured strategy into a clear, decisive, professional output.
+Transforme la stratégie structurée en un rendu clair, tranché, professionnel.
 
-Structure (French):
+Structure :
 1) Décision (Move + Canal)
 2) Pourquoi (1–2 lignes)
 3) Impulsion (Momentum / Risk / Control)
 4) Diagnostic Partner (deal maturity, sponsor, power, urgency, hidden risks, info gaps)
-5) Plan d'appel (opening + objectives + questions + pushbacks)
-6) Emails alternatifs (Option A / Option B) copy/paste:
+5) Plan d’appel (opening + objectives + questions + pushbacks)
+6) Emails alternatifs (Option A / Option B) prêts à copier/coller :
    - Objet
    - Corps
    - CTA
 
-Rules:
-- Tone: senior colleague, direct, no fluff.
-- If info_gaps exist, list them as "Questions à verrouiller".
-- No JSON in final output.
+Règles :
+- Ton : collègue senior, direct, sans blabla.
+- Si info_gaps existe, les lister en “Questions à verrouiller”.
+- Ne jamais inclure de JSON dans la sortie finale.
 """.strip()
 
 
@@ -324,6 +326,46 @@ def openai_text(model: str, system: str, user: str) -> str:
         temperature=0.3,
     )
     return (resp.choices[0].message.content or "").strip()
+
+
+def _normalize_key_signals(value: Any) -> List[Dict[str, str]]:
+    """
+    Ensures key_signals is always a list of {quote:str, meaning:str}.
+    Prevents Pydantic crashes when model returns weird shapes.
+    """
+    if not isinstance(value, list):
+        return []
+    out: List[Dict[str, str]] = []
+    for item in value:
+        if isinstance(item, dict):
+            quote = item.get("quote", "")
+            meaning = item.get("meaning", "")
+            if not isinstance(quote, str):
+                quote = str(quote)
+            if not isinstance(meaning, str):
+                meaning = str(meaning)
+            if quote or meaning:
+                out.append({"quote": quote, "meaning": meaning})
+        elif isinstance(item, str):
+            # If model returned plain strings, keep as quote
+            out.append({"quote": item, "meaning": ""})
+        else:
+            # best-effort
+            out.append({"quote": str(item), "meaning": ""})
+    return out
+
+
+def _normalize_email_draft(value: Any) -> Dict[str, str]:
+    if isinstance(value, dict):
+        subject = value.get("subject", "")
+        body = value.get("body", "")
+        cta = value.get("cta", "")
+        return {
+            "subject": subject if isinstance(subject, str) else str(subject),
+            "body": body if isinstance(body, str) else str(body),
+            "cta": cta if isinstance(cta, str) else str(cta),
+        }
+    return {"subject": "", "body": "", "cta": ""}
 
 
 def repair_strategy(raw: Dict[str, Any]) -> Dict[str, Any]:
@@ -369,6 +411,17 @@ def repair_strategy(raw: Dict[str, Any]) -> Dict[str, Any]:
         }
 
     if "analysis" in raw and "decision" in raw and "execution" in raw:
+        # Still normalize a few nested shapes defensively
+        try:
+            raw["analysis"]["key_signals"] = _normalize_key_signals(raw.get("analysis", {}).get("key_signals"))
+        except Exception:
+            pass
+        try:
+            ex = raw.get("execution", {})
+            ex["email_option_a"] = _normalize_email_draft(ex.get("email_option_a"))
+            ex["email_option_b"] = _normalize_email_draft(ex.get("email_option_b"))
+        except Exception:
+            pass
         return raw
 
     # Map common “partial” keys into the right locations
@@ -377,8 +430,6 @@ def repair_strategy(raw: Dict[str, Any]) -> Dict[str, Any]:
     email_short = raw.get("email_short") if isinstance(raw.get("email_short"), dict) else {}
     email_standard = raw.get("email_standard") if isinstance(raw.get("email_standard"), dict) else {}
 
-    # If email_short/email_standard are in "option_A/option_B" format, we keep them as text angles/cta
-    # but we also provide proper option_a/option_b drafts empty (composer will still output something coherent).
     fixed: Dict[str, Any] = {
         "analysis": {
             "recontextualisation": raw.get("recontextualisation", "") if isinstance(raw.get("recontextualisation"), str) else "",
@@ -387,8 +438,8 @@ def repair_strategy(raw: Dict[str, Any]) -> Dict[str, Any]:
             "control": raw.get("control", "UNKNOWN") if raw.get("control") in ["LOW", "MED", "HIGH", "UNKNOWN"] else "UNKNOWN",
             "budget_type": raw.get("budget_type", "UNKNOWN") if raw.get("budget_type") in ["FINANCIAL", "POLITICAL", "STALL", "UNKNOWN"] else "UNKNOWN",
             "posture": raw.get("posture", "NEUTRAL") if raw.get("posture") in ["ENGAGED", "NEUTRAL", "RESISTANT", "AVOIDING"] else "NEUTRAL",
-            "key_signals": raw.get("key_signals", []) if isinstance(raw.get("key_signals"), list) else [],
-            "deal_maturity": raw.get("deal_maturity", 1) if raw.get("deal_maturity") in [1,2,3,4,5] else 1,
+            "key_signals": _normalize_key_signals(raw.get("key_signals", [])),
+            "deal_maturity": raw.get("deal_maturity", 1) if raw.get("deal_maturity") in [1, 2, 3, 4, 5] else 1,
             "sponsor_strength": raw.get("sponsor_strength", "WEAK") if raw.get("sponsor_strength") in ["WEAK", "MED", "STRONG"] else "WEAK",
             "power_balance": raw.get("power_balance", "EVEN") if raw.get("power_balance") in ["SELLER_UP", "EVEN", "BUYER_UP"] else "EVEN",
             "urgency_decay": raw.get("urgency_decay", "UNKNOWN") if raw.get("urgency_decay") in ["LOW", "MED", "HIGH", "UNKNOWN"] else "UNKNOWN",
@@ -397,8 +448,8 @@ def repair_strategy(raw: Dict[str, Any]) -> Dict[str, Any]:
             "info_gaps": info_gaps,
         },
         "decision": {
-            "primary_move": raw.get("primary_move", "CLARIFY") if raw.get("primary_move") in ["PUSH","CLARIFY","PAUSE","DISENGAGE"] else "CLARIFY",
-            "recommended_channel": raw.get("recommended_channel", "BOTH") if raw.get("recommended_channel") in ["CALL","EMAIL","BOTH"] else "BOTH",
+            "primary_move": raw.get("primary_move", "CLARIFY") if raw.get("primary_move") in ["PUSH", "CLARIFY", "PAUSE", "DISENGAGE"] else "CLARIFY",
+            "recommended_channel": raw.get("recommended_channel", "BOTH") if raw.get("recommended_channel") in ["CALL", "EMAIL", "BOTH"] else "BOTH",
             "reasoning_summary": raw.get("reasoning_summary", "") if isinstance(raw.get("reasoning_summary"), str) else "",
             "what_success_looks_like": raw.get("what_success_looks_like", "") if isinstance(raw.get("what_success_looks_like"), str) else "",
             "scenario_a": raw.get("scenario_a", "") if isinstance(raw.get("scenario_a"), str) else "",
@@ -420,16 +471,10 @@ def repair_strategy(raw: Dict[str, Any]) -> Dict[str, Any]:
                 "angle": email_standard.get("angle", "") if isinstance(email_standard.get("angle"), str) else "",
                 "cta": email_standard.get("cta", "") if isinstance(email_standard.get("cta"), str) else "",
             },
-            "email_option_a": raw.get("email_option_a", {"subject": "", "body": "", "cta": ""}),
-            "email_option_b": raw.get("email_option_b", {"subject": "", "body": "", "cta": ""}),
+            "email_option_a": _normalize_email_draft(raw.get("email_option_a")),
+            "email_option_b": _normalize_email_draft(raw.get("email_option_b")),
         },
     }
-
-    # If the model gave email drafts in weird shapes, ensure dicts exist
-    if not isinstance(fixed["execution"].get("email_option_a"), dict):
-        fixed["execution"]["email_option_a"] = {"subject": "", "body": "", "cta": ""}
-    if not isinstance(fixed["execution"].get("email_option_b"), dict):
-        fixed["execution"]["email_option_b"] = {"subject": "", "body": "", "cta": ""}
 
     return fixed
 
@@ -442,6 +487,7 @@ def health():
 @app.post("/analyze", response_model=AnalyzeResponse)
 def analyze(req: AnalyzeRequest):
     system_strategy = build_system_strategy(req.lang)
+
     raw = openai_json_only(
         model=MODEL_STRATEGY,
         system=system_strategy,
