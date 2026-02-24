@@ -128,6 +128,7 @@ class HermannStrategyJSON(BaseModel):
 # -------------------------
 class AnalyzeRequest(BaseModel):
     raw_input: str
+    lang: str = "fr"  # default language, backward compatible
 
 
 class AnalyzeResponse(BaseModel):
