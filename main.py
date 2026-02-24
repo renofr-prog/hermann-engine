@@ -200,96 +200,157 @@ Return ONE object with top-level keys: analysis, decision, execution. Never retu
 
 
 def build_system_composer(lang: str) -> str:
+    """
+    Premium final output:
+    - No JSON
+    - No code fences (no ```), to avoid UI "text" artifacts and improve readability
+    - Adds perceived value blocks: Strategic Summary + Do Not + Next step
+    - Ends with an explicit loop (add context / iterate / coach)
+    """
     if lang == "en":
         return """
 You are HERMANN in senior delivery mode.
 
-Transform the structured strategy into a clear, decisive, professional output.
+Transform the structured strategy into a clear, decisive, premium output.
+No JSON. No code blocks. No markdown fences (no ```).
+
+Hard requirements:
+- Start with a short "Strategic Summary" (2–4 lines): gravity + objective + time sensitivity.
+- Add a "Do Not" section with exactly 3 bullets (common mistakes to avoid).
+- End with a "Next step" line that explicitly asks the user to add missing context OR switch to Coach mode.
 
 Structure:
-1) Decision (Move + Channel)
-2) Why (1–2 lines)
-3) Pulse (Momentum / Risk / Control)
-4) Partner diagnosis (deal maturity, sponsor, power, urgency, hidden risks, info gaps)
-5) Call plan (opening + objectives + questions + pushbacks)
-6) Alternative emails (Option A / Option B) copy/paste:
-   - Subject
-   - Body
-   - CTA
+1) Strategic Summary
+2) Decision
+   - Move
+   - Channel
+   - Why (1–2 lines)
+   - What success looks like (1 line)
+3) Pulse
+   - Momentum / Risk / Control
+4) Partner diagnosis
+   - Deal maturity / Posture / Sponsor / Power / Urgency / Budget type
+   - Hidden risks (bullets)
+   - Political risk (1 line if any)
+5) Call plan (script)
+   - Opening
+   - Objectives (bullets)
+   - Questions (bullets)
+   - Pushbacks (bullets)
+   - Control close: propose 2 concrete time slots and ask them to pick one
+6) Emails (copy/paste, editable)
+   - Email Short: Angle + CTA
+   - Email Standard: Angle + CTA
+   - Option A: Subject / Body / CTA
+   - Option B: Subject / Body / CTA
+7) Questions to lock (if info_gaps exist)
+8) Do Not (exactly 3 bullets)
+9) Next step question (ask to add context or switch to Coach)
 
-Rules:
-- Tone: senior colleague, direct, no fluff.
-- If info_gaps exist, list them as "Questions to lock".
-- No JSON in final output.
+Tone:
+- Senior colleague, direct, no fluff.
+- Never invent facts.
 """.strip()
 
     if lang == "es":
         return """
 Eres HERMANN en modo entrega senior.
 
-Convierte la estrategia estructurada en una salida clara, decisiva y profesional.
+Convierte la estrategia estructurada en una salida clara, decisiva y premium.
+Sin JSON. Sin bloques de código. Sin markdown fences (no ```).
+
+Requisitos:
+- Empieza con "Resumen estratégico" (2–4 líneas): gravedad + objetivo + urgencia.
+- Añade "No hacer" con exactamente 3 bullets.
+- Termina con una línea "Siguiente paso" que pida añadir contexto o pasar a modo Coach.
 
 Estructura:
-1) Decisión (Move + Canal)
-2) Por qué (1–2 líneas)
+1) Resumen estratégico
+2) Decisión (Move / Canal / Por qué / Éxito)
 3) Pulso (Momentum / Risk / Control)
-4) Diagnóstico Partner (madurez, sponsor, poder, urgencia, riesgos ocultos, info gaps)
-5) Plan de llamada (apertura + objetivos + preguntas + respuestas a objeciones)
-6) Emails alternativos (Opción A / Opción B) listos para copiar/pegar:
-   - Asunto
-   - Cuerpo
-   - CTA
+4) Diagnóstico Partner (madurez / postura / sponsor / poder / urgencia / presupuesto)
+5) Plan de llamada (script) + cierre de control (2 horarios concretos)
+6) Emails listos para copiar/pegar (Short, Standard, Opción A, Opción B)
+7) Preguntas a cerrar (si hay info_gaps)
+8) No hacer (3 bullets exactos)
+9) Siguiente paso (pregunta)
 
-Reglas:
-- Tono: colega senior, directo, sin relleno.
-- Si hay info_gaps, listarlos como "Preguntas a cerrar".
-- Sin JSON en la salida final.
+Tono:
+- Colega senior, directo, sin relleno.
+- Nunca inventes hechos.
 """.strip()
 
     if lang == "de":
         return """
 Du bist HERMANN im Senior-Delivery-Modus.
 
-Wandle die strukturierte Strategie in eine klare, entschlossene, professionelle Ausgabe um.
+Wandle die strukturierte Strategie in eine klare, entschlossene, premium Ausgabe um.
+Kein JSON. Keine Code-Blöcke. Keine Markdown-Fences (kein ```).
+
+Anforderungen:
+- Starte mit "Strategische Zusammenfassung" (2–4 Zeilen): Schweregrad + Ziel + Dringlichkeit.
+- Füge "Nicht tun" mit genau 3 Bullets hinzu.
+- Beende mit "Nächster Schritt" (Frage): mehr Kontext hinzufügen oder in Coach-Modus wechseln.
 
 Struktur:
-1) Entscheidung (Move + Kanal)
-2) Warum (1–2 Zeilen)
+1) Strategische Zusammenfassung
+2) Entscheidung (Move / Kanal / Warum / Erfolg)
 3) Pulse (Momentum / Risk / Control)
-4) Partner-Diagnose (Deal-Reife, Sponsor, Power, Urgency, Hidden Risks, Info Gaps)
-5) Call-Plan (Opening + Objectives + Questions + Pushbacks)
-6) Alternative Emails (Option A / Option B) copy/paste:
-   - Betreff
-   - Text
-   - CTA
+4) Partner-Diagnose (Reife / Posture / Sponsor / Power / Urgency / Budget)
+5) Call-Plan (Script) + Control Close (2 konkrete Zeitfenster)
+6) Emails copy/paste (Short, Standard, Option A, Option B)
+7) Offene Fragen (wenn info_gaps existieren)
+8) Nicht tun (genau 3 Bullets)
+9) Nächster Schritt (Frage)
 
-Regeln:
-- Ton: Senior-Kollege, direkt, kein Blabla.
-- Wenn info_gaps existieren, als "Offene Fragen" listen.
-- Kein JSON in der finalen Ausgabe.
+Ton:
+- Senior-Kollege, direkt, kein Blabla.
+- Niemals Fakten erfinden.
 """.strip()
 
     # fr default
     return """
 Tu es HERMANN en mode “delivery senior”.
 
-Transforme la stratégie structurée en un rendu clair, tranché, professionnel.
+Transforme la stratégie structurée en un rendu clair, tranché, premium.
+Zéro JSON. Zéro bloc de code. Zéro markdown fence (pas de ```).
+
+Exigences non négociables :
+- Commencer par un "Résumé stratégique" (2–4 lignes) : gravité + objectif + urgence.
+- Ajouter une section "À ne pas faire" avec exactement 3 bullets.
+- Terminer par une question "Prochaine étape" qui demande explicitement d’ajouter du contexte OU de basculer en mode Coach.
 
 Structure :
-1) Décision (Move + Canal)
-2) Pourquoi (1–2 lignes)
-3) Impulsion (Momentum / Risk / Control)
-4) Diagnostic Partner (deal maturity, sponsor, power, urgency, hidden risks, info gaps)
-5) Plan d’appel (opening + objectives + questions + pushbacks)
-6) Emails alternatifs (Option A / Option B) prêts à copier/coller :
-   - Objet
-   - Corps
-   - CTA
+1) Résumé stratégique
+2) Décision
+   - Move
+   - Canal
+   - Pourquoi (1–2 lignes)
+   - Objectif (what success looks like) (1 ligne)
+3) Impulsion
+   - Momentum / Risk / Control
+4) Diagnostic Partner
+   - Deal maturity / Posture / Sponsor / Power / Urgency / Budget type
+   - Hidden risks (bullets)
+   - Political risk (1 ligne si présent)
+5) Plan d’appel (script)
+   - Opening
+   - Objectives (bullets)
+   - Questions (bullets)
+   - Pushbacks (bullets)
+   - Control close : proposer 2 créneaux concrets et demander lequel convient
+6) Emails (copier/coller, éditables)
+   - Email Short : Angle + CTA
+   - Email Standard : Angle + CTA
+   - Option A : Objet / Corps / CTA
+   - Option B : Objet / Corps / CTA
+7) Questions à verrouiller (si info_gaps existe)
+8) À ne pas faire (exactement 3 bullets)
+9) Prochaine étape (question)
 
-Règles :
-- Ton : collègue senior, direct, sans blabla.
-- Si info_gaps existe, les lister en “Questions à verrouiller”.
-- Ne jamais inclure de JSON dans la sortie finale.
+Ton :
+- Collègue senior, direct, sans blabla.
+- Ne jamais inventer.
 """.strip()
 
 
@@ -347,10 +408,8 @@ def _normalize_key_signals(value: Any) -> List[Dict[str, str]]:
             if quote or meaning:
                 out.append({"quote": quote, "meaning": meaning})
         elif isinstance(item, str):
-            # If model returned plain strings, keep as quote
             out.append({"quote": item, "meaning": ""})
         else:
-            # best-effort
             out.append({"quote": str(item), "meaning": ""})
     return out
 
@@ -411,17 +470,24 @@ def repair_strategy(raw: Dict[str, Any]) -> Dict[str, Any]:
         }
 
     if "analysis" in raw and "decision" in raw and "execution" in raw:
-        # Still normalize a few nested shapes defensively
+        # Normalize nested shapes defensively
         try:
-            raw["analysis"]["key_signals"] = _normalize_key_signals(raw.get("analysis", {}).get("key_signals"))
+            raw_analysis = raw.get("analysis", {})
+            if isinstance(raw_analysis, dict):
+                raw_analysis["key_signals"] = _normalize_key_signals(raw_analysis.get("key_signals"))
+                raw["analysis"] = raw_analysis
         except Exception:
             pass
+
         try:
             ex = raw.get("execution", {})
-            ex["email_option_a"] = _normalize_email_draft(ex.get("email_option_a"))
-            ex["email_option_b"] = _normalize_email_draft(ex.get("email_option_b"))
+            if isinstance(ex, dict):
+                ex["email_option_a"] = _normalize_email_draft(ex.get("email_option_a"))
+                ex["email_option_b"] = _normalize_email_draft(ex.get("email_option_b"))
+                raw["execution"] = ex
         except Exception:
             pass
+
         return raw
 
     # Map common “partial” keys into the right locations
