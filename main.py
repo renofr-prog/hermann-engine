@@ -34,8 +34,8 @@ app = FastAPI(title="HERMANN v1", version="1.0.0")
 # Definitive JSON schema (V1 + V2 extensions, backward compatible)
 # -------------------------
 Momentum = Literal["LOW", "MED", "HIGH"]
-Risk = Literal["LOW", "MED", "HIGH"]
-Control = Literal["LOW", "MED", "HIGH"]
+Risk = Literal["LOW", "MED", "HIGH", "UNKNOWN"]          # ✅ allow UNKNOWN
+Control = Literal["LOW", "MED", "HIGH", "UNKNOWN"]       # ✅ allow UNKNOWN
 BudgetType = Literal["FINANCIAL", "POLITICAL", "STALL", "UNKNOWN"]
 Posture = Literal["ENGAGED", "NEUTRAL", "RESISTANT", "AVOIDING"]
 PrimaryMove = Literal["PUSH", "CLARIFY", "PAUSE", "DISENGAGE"]
@@ -44,7 +44,7 @@ RecommendedChannel = Literal["CALL", "EMAIL", "BOTH"]
 DealMaturity = Literal[1, 2, 3, 4, 5]
 SponsorStrength = Literal["WEAK", "MED", "STRONG"]
 PowerBalance = Literal["SELLER_UP", "EVEN", "BUYER_UP"]
-UrgencyDecay = Literal["LOW", "MED", "HIGH"]
+UrgencyDecay = Literal["LOW", "MED", "HIGH", "UNKNOWN"]  # ✅ allow UNKNOWN
 
 
 class KeySignal(BaseModel):
@@ -154,8 +154,8 @@ Return ONLY valid JSON matching this schema:
   "analysis": {
     "recontextualisation": "",
     "momentum": "LOW|MED|HIGH",
-    "risk": "LOW|MED|HIGH",
-    "control": "LOW|MED|HIGH",
+    "risk": "LOW|MED|HIGH|UNKNOWN",
+    "control": "LOW|MED|HIGH|UNKNOWN",
     "budget_type": "FINANCIAL|POLITICAL|STALL|UNKNOWN",
     "posture": "ENGAGED|NEUTRAL|RESISTANT|AVOIDING",
     "key_signals": [{"quote": "...", "meaning": "..."}],
@@ -163,7 +163,7 @@ Return ONLY valid JSON matching this schema:
     "deal_maturity": 1|2|3|4|5,
     "sponsor_strength": "WEAK|MED|STRONG",
     "power_balance": "SELLER_UP|EVEN|BUYER_UP",
-    "urgency_decay": "LOW|MED|HIGH",
+    "urgency_decay": "LOW|MED|HIGH|UNKNOWN",
     "hidden_risks": ["..."],
     "political_risk": "",
     "info_gaps": ["..."]
@@ -267,6 +267,7 @@ def health():
     return {"ok": True, "service": "hermann-engine"}
 
 
+# ✅ Keep existing endpoint
 @app.post("/analyze", response_model=AnalyzeResponse)
 def analyze(req: AnalyzeRequest):
     raw = openai_json_only(
@@ -294,3 +295,9 @@ def analyze(req: AnalyzeRequest):
     )
 
     return {"strategy": strategy, "output": output}
+
+
+# ✅ Alias endpoint to match front/proxy expectations (no breaking)
+@app.post("/api/decision", response_model=AnalyzeResponse)
+def api_decision(req: AnalyzeRequest):
+    return analyze(req)
