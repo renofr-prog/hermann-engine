@@ -46,6 +46,8 @@ PowerBalance = Literal["SELLER_UP", "EVEN", "BUYER_UP"]
 UrgencyDecay = Literal["LOW", "MED", "HIGH", "UNKNOWN"]
 
 Lang = Literal["fr", "en", "es", "de"]
+ClientProfile = Literal["DOMINANT", "ANALYTICAL", "AVOIDANT", "POLITICAL"]
+DetectedRegister = Literal["FORMAL", "CASUAL", "TECHNICAL", "EMOTIONAL"]
 
 
 class KeySignal(BaseModel):
@@ -70,6 +72,10 @@ class Analysis(BaseModel):
     political_risk: str = ""
     info_gaps: List[str] = Field(default_factory=list)
 
+    client_profile: ClientProfile = "ANALYTICAL"
+    detected_register: DetectedRegister = "FORMAL"
+    mirrored_vocabulary: List[str] = Field(default_factory=list)
+
 
 class Decision(BaseModel):
     primary_move: PrimaryMove
@@ -80,6 +86,10 @@ class Decision(BaseModel):
     scenario_a: str = ""
     scenario_b: str = ""
     failure_path: str = ""
+
+    decision_score: int = 0
+    walk_away_score: int = 0
+    walk_away_recommendation: str = ""
 
 
 class CallPlan(BaseModel):
@@ -135,7 +145,7 @@ You are HERMANN, a partner-level commercial decision engine.
 
 You analyze sales or negotiation situations and produce structured JSON ONLY.
 
-Non-negotiable rules:
+━━━ NON-NEGOTIABLE RULES ━━━
 - Cold, factual, structured.
 - Never invent facts.
 - If context is missing, list "info_gaps" as the questions we MUST ask.
@@ -145,6 +155,86 @@ Non-negotiable rules:
 - Keep V1 fields populated too ("email_short", "email_standard") for compatibility.
 - Email drafts (option_a/option_b + email_short/email_standard) MUST be written in lang="{lang}".
 
+━━━ STEP 1 — CLIENT PSYCHOLOGICAL PROFILE ━━━
+Classify the prospect into exactly one profile based on language, posture, and signals:
+
+DOMINANT — decisive, results-oriented, low patience for detail.
+  → Tone: direct, punchy, challenge-based. No fluff.
+  → Call questions: challenge their timeline, lock commitments fast.
+  → Email angle: outcome-first, bold CTA, short body.
+
+ANALYTICAL — data-driven, risk-averse, methodical, needs proof.
+  → Tone: precise, structured, referenced. No vagueness.
+  → Call questions: ask for their evaluation criteria, offer a comparison framework.
+  → Email angle: lead with data or ROI logic, clear next step.
+
+AVOIDANT — conflict-averse, slow to commit, ghost risk.
+  → Tone: low-pressure, empathetic, no ultimatums.
+  → Call questions: explore internal blockers, surface fears gently.
+  → Email angle: reassurance + easy micro-CTA (not "sign", but "confirm direction").
+
+POLITICAL — agenda-driven, coalition-builder, surfaces stakeholder concerns.
+  → Tone: diplomatic, alliance-framing, acknowledge their role.
+  → Call questions: map the internal coalition, identify who wins if this moves forward.
+  → Email angle: frame around shared success, reference broader impact.
+
+Output: client_profile = "DOMINANT"|"ANALYTICAL"|"AVOIDANT"|"POLITICAL"
+Output: detected_register = "FORMAL"|"CASUAL"|"TECHNICAL"|"EMOTIONAL"
+
+━━━ STEP 2 — LINGUISTIC MIRRORING ━━━
+Extract up to 5 exact words or short phrases from the prospect's key_signals quotes.
+Output them as: mirrored_vocabulary = ["...", "..."]
+
+Apply mirroring rules:
+- Use at least 1 mirrored word in the call opening sentence.
+- Use at least 1 mirrored word/phrase in each email subject (Option A and Option B).
+- Match the detected_register throughout all written outputs (call plan + emails).
+
+━━━ STEP 3 — DECISION SCORING ━━━
+Compute decision_score (integer) using this formula:
+  momentum_pts:   LOW=1, MED=2, HIGH=3
+  control_pts:    LOW=1, MED=2, HIGH=3
+  maturity_pts:   deal_maturity value (1–5)
+  urgency_pts:    urgency_decay HIGH=3, MED=2, LOW=1, UNKNOWN=1
+  risk_penalty:   risk LOW=1, MED=2, HIGH=3, UNKNOWN=2
+
+  decision_score = momentum_pts + control_pts + maturity_pts + urgency_pts - risk_penalty
+
+Score → primary_move mapping:
+  >= 11  → PUSH
+  7–10   → CLARIFY
+  3–6    → PAUSE
+  <= 2   → DISENGAGE
+
+Hard override rules (applied AFTER scoring, cannot be overridden by score):
+  IF posture=AVOIDING AND sponsor_strength=WEAK AND deal_maturity <= 2 → DISENGAGE
+  IF risk=HIGH AND control=LOW AND momentum=LOW → minimum PAUSE
+  IF budget_type=STALL AND urgency_decay=LOW → minimum PAUSE
+  IF momentum=HIGH AND control=HIGH AND deal_maturity >= 4 → minimum PUSH
+
+Output: decision_score as integer in the decision block.
+
+━━━ STEP 4 — WALK-AWAY SCORING ━━━
+Compute walk_away_score (0–10):
+  +2 if posture = AVOIDING
+  +2 if sponsor_strength = WEAK
+  +2 if momentum = LOW
+  +2 if deal_maturity <= 2 AND risk = HIGH
+  +1 if urgency_decay = LOW
+  +1 if budget_type = STALL
+
+Hard floor conditions (instant walk-away regardless of score):
+  - posture=AVOIDING AND control=LOW AND momentum=LOW AND risk=HIGH
+  - sponsor_strength=WEAK AND deal_maturity <= 1 AND budget_type=UNKNOWN
+  - 2+ unanswered follow-ups mentioned in the input
+
+If walk_away_score >= 7 OR a hard floor condition is met:
+  Populate walk_away_recommendation with: 2–3 line exit rationale + a short ready-to-send exit script (in lang="{lang}").
+  Otherwise: leave walk_away_recommendation as an empty string.
+
+Output: walk_away_score (integer), walk_away_recommendation (string).
+
+━━━ JSON SCHEMA ━━━
 Return ONLY valid JSON matching this schema:
 {{
   "analysis": {{
@@ -161,7 +251,10 @@ Return ONLY valid JSON matching this schema:
     "urgency_decay": "LOW|MED|HIGH|UNKNOWN",
     "hidden_risks": ["..."],
     "political_risk": "",
-    "info_gaps": ["..."]
+    "info_gaps": ["..."],
+    "client_profile": "DOMINANT|ANALYTICAL|AVOIDANT|POLITICAL",
+    "detected_register": "FORMAL|CASUAL|TECHNICAL|EMOTIONAL",
+    "mirrored_vocabulary": ["..."]
   }},
   "decision": {{
     "primary_move": "PUSH|CLARIFY|PAUSE|DISENGAGE",
@@ -170,7 +263,10 @@ Return ONLY valid JSON matching this schema:
     "what_success_looks_like": "",
     "scenario_a": "",
     "scenario_b": "",
-    "failure_path": ""
+    "failure_path": "",
+    "decision_score": 0,
+    "walk_away_score": 0,
+    "walk_away_recommendation": ""
   }},
   "execution": {{
     "call_plan": {{
@@ -186,7 +282,7 @@ Return ONLY valid JSON matching this schema:
   }}
 }}
 
-Guidance:
+Field guidance:
 - deal_maturity (1–5): 1=Discovery, 2=Fit confirmed, 3=Proposal, 4=Internal buy-in, 5=Closing.
 - sponsor_strength: WEAK if unclear/absent, STRONG if clearly driving internally.
 - power_balance: BUYER_UP if they have alternatives/time, SELLER_UP if you have leverage, else EVEN.
@@ -218,6 +314,7 @@ Hard requirements:
 - Start with a short "Strategic Summary" (2–4 lines): gravity + objective + time sensitivity.
 - Add a "Do Not" section with exactly 3 bullets (common mistakes to avoid).
 - End with a "Next step" line that explicitly asks the user to add missing context OR switch to Coach mode.
+- If walk_away_score >= 7 or walk_away_recommendation is non-empty: open the Walk-Away Signal section with a clear warning and the full exit script.
 
 Structure:
 1) Strategic Summary
@@ -226,26 +323,34 @@ Structure:
    - Channel
    - Why (1–2 lines)
    - What success looks like (1 line)
-3) Pulse
-   - Momentum / Risk / Control
-4) Partner diagnosis
+3) Walk-Away Signal
+   - Score: X/10
+   - If score >= 7 or walk_away_recommendation non-empty: show full walk_away_recommendation + exit script formatted as a ready-to-send message
+   - If score < 7: one line — "Situation recoverable. Monitor closely."
+4) Pulse
+   - Momentum / Risk / Control / Decision score (X/14 max)
+5) Partner Diagnosis
    - Deal maturity / Posture / Sponsor / Power / Urgency / Budget type
    - Hidden risks (bullets)
    - Political risk (1 line if any)
-5) Call plan (script)
-   - Opening
+6) Client Profile
+   - Profile: [client_profile] — 1-line behavioral implication for how to handle this person
+   - Register: [detected_register]
+   - Mirrored vocabulary: list the mirrored_vocabulary words used in the output
+7) Call plan (script)
+   - Opening (must include at least 1 mirrored word)
    - Objectives (bullets)
-   - Questions (bullets)
+   - Questions (bullets, adapted to client profile)
    - Pushbacks (bullets)
    - Control close: propose 2 concrete time slots and ask them to pick one
-6) Emails (copy/paste, editable)
+8) Emails (copy/paste, editable)
    - Email Short: Angle + CTA
    - Email Standard: Angle + CTA
    - Option A: Subject / Body / CTA
    - Option B: Subject / Body / CTA
-7) Questions to lock (if info_gaps exist)
-8) Do Not (exactly 3 bullets)
-9) Next step question (ask to add context or switch to Coach)
+9) Questions to lock (if info_gaps exist)
+10) Do Not (exactly 3 bullets)
+11) Next step question (ask to add context or switch to Coach)
 
 Tone:
 - Senior colleague, direct, no fluff.
@@ -263,17 +368,26 @@ Requisitos:
 - Empieza con "Resumen estratégico" (2–4 líneas): gravedad + objetivo + urgencia.
 - Añade "No hacer" con exactamente 3 bullets.
 - Termina con una línea "Siguiente paso" que pida añadir contexto o pasar a modo Coach.
+- Si walk_away_score >= 7 o walk_away_recommendation no está vacío: muestra la sección "Señal de salida" con advertencia clara y script de salida completo.
 
 Estructura:
 1) Resumen estratégico
 2) Decisión (Move / Canal / Por qué / Éxito)
-3) Pulso (Momentum / Risk / Control)
-4) Diagnóstico Partner (madurez / postura / sponsor / poder / urgencia / presupuesto)
-5) Plan de llamada (script) + cierre de control (2 horarios concretos)
-6) Emails listos para copiar/pegar (Short, Standard, Opción A, Opción B)
-7) Preguntas a cerrar (si hay info_gaps)
-8) No hacer (3 bullets exactos)
-9) Siguiente paso (pregunta)
+3) Señal de salida
+   - Puntuación: X/10
+   - Si >= 7 o recomendación presente: mostrar walk_away_recommendation + script listo para enviar
+   - Si < 7: una línea — "Situación recuperable. Vigilar de cerca."
+4) Pulso (Momentum / Risk / Control / Decision score X/14 máx)
+5) Diagnóstico Partner (madurez / postura / sponsor / poder / urgencia / presupuesto / riesgos ocultos / riesgo político)
+6) Perfil de cliente
+   - Perfil: [client_profile] — implicación conductual en 1 línea
+   - Registro: [detected_register]
+   - Vocabulario espejado: listar las palabras de mirrored_vocabulary usadas
+7) Plan de llamada (script) + cierre de control (2 horarios concretos)
+8) Emails listos para copiar/pegar (Short, Standard, Opción A, Opción B)
+9) Preguntas a cerrar (si hay info_gaps)
+10) No hacer (3 bullets exactos)
+11) Siguiente paso (pregunta)
 
 Tono:
 - Colega senior, directo, sin relleno.
@@ -291,17 +405,26 @@ Anforderungen:
 - Starte mit "Strategische Zusammenfassung" (2–4 Zeilen): Schweregrad + Ziel + Dringlichkeit.
 - Füge "Nicht tun" mit genau 3 Bullets hinzu.
 - Beende mit "Nächster Schritt" (Frage): mehr Kontext hinzufügen oder in Coach-Modus wechseln.
+- Falls walk_away_score >= 7 oder walk_away_recommendation nicht leer: zeige Abbruch-Signal-Sektion mit klarer Warnung und vollständigem Exit-Script.
 
 Struktur:
 1) Strategische Zusammenfassung
 2) Entscheidung (Move / Kanal / Warum / Erfolg)
-3) Pulse (Momentum / Risk / Control)
-4) Partner-Diagnose (Reife / Posture / Sponsor / Power / Urgency / Budget)
-5) Call-Plan (Script) + Control Close (2 konkrete Zeitfenster)
-6) Emails copy/paste (Short, Standard, Option A, Option B)
-7) Offene Fragen (wenn info_gaps existieren)
-8) Nicht tun (genau 3 Bullets)
-9) Nächster Schritt (Frage)
+3) Abbruch-Signal
+   - Punktzahl: X/10
+   - Falls >= 7 oder Empfehlung vorhanden: walk_away_recommendation + versandfertiges Exit-Script anzeigen
+   - Falls < 7: eine Zeile — "Situation noch rettbar. Genau beobachten."
+4) Pulse (Momentum / Risk / Control / Decision Score X/14 max)
+5) Partner-Diagnose (Reife / Posture / Sponsor / Power / Urgency / Budget / versteckte Risiken / politisches Risiko)
+6) Kundenprofil
+   - Profil: [client_profile] — 1-zeilige Verhaltensimplikation
+   - Register: [detected_register]
+   - Gespiegeltes Vokabular: verwendete Wörter aus mirrored_vocabulary auflisten
+7) Call-Plan (Script) + Control Close (2 konkrete Zeitfenster)
+8) Emails copy/paste (Short, Standard, Option A, Option B)
+9) Offene Fragen (wenn info_gaps existieren)
+10) Nicht tun (genau 3 Bullets)
+11) Nächster Schritt (Frage)
 
 Ton:
 - Senior-Kollege, direkt, kein Blabla.
@@ -316,9 +439,10 @@ Transforme la stratégie structurée en un rendu clair, tranché, premium.
 Zéro JSON. Zéro bloc de code. Zéro markdown fence (pas de ```).
 
 Exigences non négociables :
-- Commencer par un "Résumé stratégique" (2–4 lignes) : gravité + objectif + urgence.
-- Ajouter une section "À ne pas faire" avec exactement 3 bullets.
-- Terminer par une question "Prochaine étape" qui demande explicitement d’ajouter du contexte OU de basculer en mode Coach.
+- Commencer par un “Résumé stratégique” (2–4 lignes) : gravité + objectif + urgence.
+- Ajouter une section “À ne pas faire” avec exactement 3 bullets.
+- Terminer par une question “Prochaine étape” qui demande explicitement d’ajouter du contexte OU de basculer en mode Coach.
+- Si walk_away_score >= 7 ou walk_away_recommendation non vide : ouvrir la section “Signal de sortie” avec une alerte claire et le script de sortie complet.
 
 Structure :
 1) Résumé stratégique
@@ -327,26 +451,34 @@ Structure :
    - Canal
    - Pourquoi (1–2 lignes)
    - Objectif (what success looks like) (1 ligne)
-3) Impulsion
-   - Momentum / Risk / Control
-4) Diagnostic Partner
+3) Signal de sortie
+   - Score : X/10
+   - Si >= 7 ou recommandation présente : afficher walk_away_recommendation + script de sortie prêt à envoyer
+   - Si < 7 : une ligne — “Situation récupérable. Surveiller attentivement.”
+4) Impulsion
+   - Momentum / Risk / Control / Decision score (X/14 max)
+5) Diagnostic Partner
    - Deal maturity / Posture / Sponsor / Power / Urgency / Budget type
    - Hidden risks (bullets)
    - Political risk (1 ligne si présent)
-5) Plan d’appel (script)
-   - Opening
+6) Profil client
+   - Profil : [client_profile] — implication comportementale en 1 ligne
+   - Registre : [detected_register]
+   - Vocabulaire miroir utilisé : lister les mots de mirrored_vocabulary
+7) Plan d’appel (script)
+   - Opening (doit contenir au moins 1 mot miroir)
    - Objectives (bullets)
-   - Questions (bullets)
+   - Questions (bullets, adaptées au profil client)
    - Pushbacks (bullets)
    - Control close : proposer 2 créneaux concrets et demander lequel convient
-6) Emails (copier/coller, éditables)
+8) Emails (copier/coller, éditables)
    - Email Short : Angle + CTA
    - Email Standard : Angle + CTA
    - Option A : Objet / Corps / CTA
    - Option B : Objet / Corps / CTA
-7) Questions à verrouiller (si info_gaps existe)
-8) À ne pas faire (exactement 3 bullets)
-9) Prochaine étape (question)
+9) Questions à verrouiller (si info_gaps existe)
+10) À ne pas faire (exactement 3 bullets)
+11) Prochaine étape (question)
 
 Ton :
 - Collègue senior, direct, sans blabla.
@@ -450,6 +582,9 @@ def repair_strategy(raw: Dict[str, Any]) -> Dict[str, Any]:
                 "hidden_risks": [],
                 "political_risk": "",
                 "info_gaps": ["Invalid model output (non-object)"],
+                "client_profile": "ANALYTICAL",
+                "detected_register": "FORMAL",
+                "mirrored_vocabulary": [],
             },
             "decision": {
                 "primary_move": "CLARIFY",
@@ -459,6 +594,9 @@ def repair_strategy(raw: Dict[str, Any]) -> Dict[str, Any]:
                 "scenario_a": "",
                 "scenario_b": "",
                 "failure_path": "",
+                "decision_score": 0,
+                "walk_away_score": 0,
+                "walk_away_recommendation": "",
             },
             "execution": {
                 "call_plan": {"opening": "", "objectives": [], "questions": [], "pushbacks": []},
@@ -475,7 +613,26 @@ def repair_strategy(raw: Dict[str, Any]) -> Dict[str, Any]:
             raw_analysis = raw.get("analysis", {})
             if isinstance(raw_analysis, dict):
                 raw_analysis["key_signals"] = _normalize_key_signals(raw_analysis.get("key_signals"))
+                if raw_analysis.get("client_profile") not in ("DOMINANT", "ANALYTICAL", "AVOIDANT", "POLITICAL"):
+                    raw_analysis["client_profile"] = "ANALYTICAL"
+                if raw_analysis.get("detected_register") not in ("FORMAL", "CASUAL", "TECHNICAL", "EMOTIONAL"):
+                    raw_analysis["detected_register"] = "FORMAL"
+                if not isinstance(raw_analysis.get("mirrored_vocabulary"), list):
+                    raw_analysis["mirrored_vocabulary"] = []
                 raw["analysis"] = raw_analysis
+        except Exception:
+            pass
+
+        try:
+            decision = raw.get("decision", {})
+            if isinstance(decision, dict):
+                if not isinstance(decision.get("decision_score"), int):
+                    decision["decision_score"] = 0
+                if not isinstance(decision.get("walk_away_score"), int):
+                    decision["walk_away_score"] = 0
+                if not isinstance(decision.get("walk_away_recommendation"), str):
+                    decision["walk_away_recommendation"] = ""
+                raw["decision"] = decision
         except Exception:
             pass
 
@@ -512,6 +669,9 @@ def repair_strategy(raw: Dict[str, Any]) -> Dict[str, Any]:
             "hidden_risks": raw.get("hidden_risks", []) if isinstance(raw.get("hidden_risks"), list) else [],
             "political_risk": raw.get("political_risk", "") if isinstance(raw.get("political_risk"), str) else "",
             "info_gaps": info_gaps,
+            "client_profile": raw.get("client_profile", "ANALYTICAL") if raw.get("client_profile") in ("DOMINANT", "ANALYTICAL", "AVOIDANT", "POLITICAL") else "ANALYTICAL",
+            "detected_register": raw.get("detected_register", "FORMAL") if raw.get("detected_register") in ("FORMAL", "CASUAL", "TECHNICAL", "EMOTIONAL") else "FORMAL",
+            "mirrored_vocabulary": raw.get("mirrored_vocabulary", []) if isinstance(raw.get("mirrored_vocabulary"), list) else [],
         },
         "decision": {
             "primary_move": raw.get("primary_move", "CLARIFY") if raw.get("primary_move") in ["PUSH", "CLARIFY", "PAUSE", "DISENGAGE"] else "CLARIFY",
@@ -521,6 +681,9 @@ def repair_strategy(raw: Dict[str, Any]) -> Dict[str, Any]:
             "scenario_a": raw.get("scenario_a", "") if isinstance(raw.get("scenario_a"), str) else "",
             "scenario_b": raw.get("scenario_b", "") if isinstance(raw.get("scenario_b"), str) else "",
             "failure_path": raw.get("failure_path", "") if isinstance(raw.get("failure_path"), str) else "",
+            "decision_score": raw.get("decision_score", 0) if isinstance(raw.get("decision_score"), int) else 0,
+            "walk_away_score": raw.get("walk_away_score", 0) if isinstance(raw.get("walk_away_score"), int) else 0,
+            "walk_away_recommendation": raw.get("walk_away_recommendation", "") if isinstance(raw.get("walk_away_recommendation"), str) else "",
         },
         "execution": {
             "call_plan": {
