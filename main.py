@@ -2,7 +2,7 @@ import os
 import json
 from typing import Any, Dict, List, Literal
 
-from fastapi import FastAPI, HTTPException
+from fastapi import Depends, FastAPI, Header, HTTPException
 from pydantic import BaseModel, Field
 from dotenv import load_dotenv
 from openai import OpenAI
@@ -25,8 +25,15 @@ if not OPENAI_API_KEY:
 MODEL_STRATEGY = os.getenv("MODEL_STRATEGY", "gpt-5-mini")
 MODEL_COMPOSER = os.getenv("MODEL_COMPOSER", "gpt-5-mini")
 
+API_KEY = os.getenv("API_KEY", "").strip()
+
 client = OpenAI(api_key=OPENAI_API_KEY)
 app = FastAPI(title="HERMANN v1", version="1.0.0")
+
+
+def require_api_key(x_api_key: str = Header(..., alias="X-API-Key")):
+    if not API_KEY or x_api_key != API_KEY:
+        raise HTTPException(status_code=401, detail="Unauthorized")
 
 
 # -------------------------
@@ -714,7 +721,7 @@ def health():
 
 
 @app.post("/analyze", response_model=AnalyzeResponse)
-def analyze(req: AnalyzeRequest):
+def analyze(req: AnalyzeRequest, _: None = Depends(require_api_key)):
     system_strategy = build_system_strategy(req.lang)
 
     raw = openai_json_only(
@@ -749,5 +756,5 @@ def analyze(req: AnalyzeRequest):
 
 # Alias endpoint to match proxy expectations (no breaking)
 @app.post("/api/decision", response_model=AnalyzeResponse)
-def api_decision(req: AnalyzeRequest):
-    return analyze(req)
+def api_decision(req: AnalyzeRequest, _: None = Depends(require_api_key)):
+    return analyze(req, _)
