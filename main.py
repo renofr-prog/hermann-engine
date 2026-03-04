@@ -43,7 +43,7 @@ Momentum = Literal["LOW", "MED", "HIGH"]
 Risk = Literal["LOW", "MED", "HIGH", "UNKNOWN"]
 Control = Literal["LOW", "MED", "HIGH", "UNKNOWN"]
 BudgetType = Literal["FINANCIAL", "POLITICAL", "STALL", "UNKNOWN"]
-Posture = Literal["ENGAGED", "NEUTRAL", "RESISTANT", "AVOIDING"]
+Posture = Literal["ENGAGED", "NEUTRAL", "RESISTANT", "AVOIDING", "DOMINANT"]
 PrimaryMove = Literal["PUSH", "CLARIFY", "PAUSE", "DISENGAGE"]
 RecommendedChannel = Literal["CALL", "EMAIL", "BOTH"]
 
@@ -250,7 +250,7 @@ Return ONLY valid JSON matching this schema:
     "risk": "LOW|MED|HIGH|UNKNOWN",
     "control": "LOW|MED|HIGH|UNKNOWN",
     "budget_type": "FINANCIAL|POLITICAL|STALL|UNKNOWN",
-    "posture": "ENGAGED|NEUTRAL|RESISTANT|AVOIDING",
+    "posture": "ENGAGED|NEUTRAL|RESISTANT|AVOIDING|DOMINANT",
     "key_signals": [{{"quote": "...", "meaning": "..."}}],
     "deal_maturity": 1|2|3|4|5,
     "sponsor_strength": "WEAK|MED|STRONG",
@@ -667,7 +667,7 @@ def repair_strategy(raw: Dict[str, Any]) -> Dict[str, Any]:
             "risk": raw.get("risk", "UNKNOWN") if raw.get("risk") in ["LOW", "MED", "HIGH", "UNKNOWN"] else "UNKNOWN",
             "control": raw.get("control", "UNKNOWN") if raw.get("control") in ["LOW", "MED", "HIGH", "UNKNOWN"] else "UNKNOWN",
             "budget_type": raw.get("budget_type", "UNKNOWN") if raw.get("budget_type") in ["FINANCIAL", "POLITICAL", "STALL", "UNKNOWN"] else "UNKNOWN",
-            "posture": raw.get("posture", "NEUTRAL") if raw.get("posture") in ["ENGAGED", "NEUTRAL", "RESISTANT", "AVOIDING"] else "NEUTRAL",
+            "posture": raw.get("posture", "NEUTRAL") if raw.get("posture") in ["ENGAGED", "NEUTRAL", "RESISTANT", "AVOIDING", "DOMINANT"] else "NEUTRAL",
             "key_signals": _normalize_key_signals(raw.get("key_signals", [])),
             "deal_maturity": raw.get("deal_maturity", 1) if raw.get("deal_maturity") in [1, 2, 3, 4, 5] else 1,
             "sponsor_strength": raw.get("sponsor_strength", "WEAK") if raw.get("sponsor_strength") in ["WEAK", "MED", "STRONG"] else "WEAK",
