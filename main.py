@@ -6,6 +6,7 @@ from fastapi import Depends, FastAPI, Header, HTTPException
 from pydantic import BaseModel, Field
 from dotenv import load_dotenv
 from openai import OpenAI
+from base44_test import test_base44
 
 # Load local .env if present (does NOT override Render env vars by default)
 load_dotenv()
@@ -758,3 +759,8 @@ def analyze(req: AnalyzeRequest, _: None = Depends(require_api_key)):
 @app.post("/api/decision", response_model=AnalyzeResponse)
 def api_decision(req: AnalyzeRequest, _: None = Depends(require_api_key)):
     return analyze(req, _)
+
+
+@app.get("/test-base44")
+def test_base44_connection():
+    return test_base44()
