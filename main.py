@@ -6,7 +6,7 @@ from fastapi import Depends, FastAPI, Header, HTTPException
 from pydantic import BaseModel, Field
 from dotenv import load_dotenv
 from openai import OpenAI
-from base44_test import test_base44
+
 
 # Load local .env if present (does NOT override Render env vars by default)
 load_dotenv()
