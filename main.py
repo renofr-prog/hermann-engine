@@ -7,7 +7,6 @@ from pydantic import BaseModel, Field
 from dotenv import load_dotenv
 from openai import OpenAI
 
-
 # Load local .env if present (does NOT override Render env vars by default)
 load_dotenv()
 
