@@ -25,7 +25,7 @@ if not OPENAI_API_KEY:
 MODEL_STRATEGY = os.getenv("MODEL_STRATEGY", "gpt-5-mini")
 MODEL_COMPOSER = os.getenv("MODEL_COMPOSER", "gpt-5-mini")
 
-API_KEY = os.getenv("API_KEY", "").strip()
+API_KEY = os.getenv("HERMANN_API_KEY", os.getenv("API_KEY", "")).strip()
 
 client = OpenAI(api_key=OPENAI_API_KEY)
 app = FastAPI(title="HERMANN v1", version="1.0.0")
